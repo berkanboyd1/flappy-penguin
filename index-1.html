@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flappy Penguin</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #090d16;
+            overflow: hidden;
+            touch-action: none;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #ui {
+            position: absolute;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 25px;
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 12px 28px;
+            border-radius: 35px;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            color: #ffffff;
+            font-size: 20px;
+            letter-spacing: 1.5px;
+            text-shadow: 2px 2px 0px #0284c7;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #highScoreText {
+            color: #fbbf24;
+            text-shadow: 2px 2px 0px #d97706;
+        }
+        #nameModal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 10, 25, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        .modal-box {
+            background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.05));
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            padding: 35px 25px;
+            border-radius: 25px;
+            text-align: center;
+            width: 80%;
+            max-width: 320px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.7);
+        }
+        .modal-box h2 {
+            color: #ffffff;
+            margin-bottom: 20px;
+            font-size: 26px;
+            text-shadow: 3px 3px 0px #0284c7;
+        }
+        .modal-box input {
+            width: 100%;
+            padding: 14px;
+            font-size: 20px;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+            border-radius: 12px;
+            border: 2px solid #38bdf8;
+            outline: none;
+            background: rgba(255, 255, 255, 0.95);
+            color: #0f172a;
+            text-align: center;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+        .modal-box button {
+            background: linear-gradient(to bottom, #38bdf8, #0284c7);
+            color: white;
+            border: 2px solid #bae6fd;
+            padding: 14px;
+            font-size: 18px;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+            box-shadow: 0 6px 20px rgba(2, 132, 199, 0.6);
+        }
+    </style>
+</head>
+<body>
+
+<div id="nameModal">
+    <div class="modal-box">
+        <h2>ENTER NICKNAME</h2>
+        <input type="text" id="usernameInput" maxlength="12" placeholder="PLAYER">
+        <button onclick="saveUsername()">START GAME</button>
+    </div>
+</div>
+
+<div id="ui">
+    <span id="scoreText">SCORE: 0</span>
+    <span id="highScoreText">BEST: 0</span>
+</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreText = document.getElementById("scoreText");
+const highScoreText = document.getElementById("highScoreText");
+const nameModal = document.getElementById("nameModal");
+const usernameInput = document.getElementById("usernameInput");
+
+let username = localStorage.getItem("flappyPenguinUsername") || "";
+let gameStarted = false;
+
+if (username) {
+    nameModal.style.display = "none";
+    gameStarted = true;
+}
+
+function saveUsername() {
+    let val = usernameInput.value.trim();
+    username = val ? val.toUpperCase() : "PLAYER";
+    localStorage.setItem("flappyPenguinUsername", username);
+    nameModal.style.display = "none";
+    gameStarted = true;
+}
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+let score = 0;
+let highScore = parseInt(localStorage.getItem("flappyPenguinArcadeHighScore")) || 0;
+highScoreText.innerHTML = "BEST: " + highScore;
+
+let isPlaying = false;
+let isGameOver = false;
+let leaderboardData = [
+    {name: "SNOWKING", score: 25},
+    {name: "PENGUINPRO", score: 18},
+    {name: "ICEFLYER", score: 12}
+];
+
+let penguin = {
+    x: 100,
+    y: canvas.height / 2,
+    width: 52,
+    height: 60,
+    gravity: 0.35,
+    lift: -7.5,
+    velocity: 0,
+    wingAngle: 0
+};
+
+let pipes = [];
+let pipeWidth = 75;
+let pipeGap = 190;
+let pipeSpeed = 3;
+let frameCount = 0;
+let idleTimer = 0;
+
+let snowflakes = [];
+for (let i = 0; i < 40; i++) {
+    snowflakes.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        radius: Math.random() * 3 + 1,
+        speed: Math.random() * 1.5 + 0.5
+    });
+}
+
+window.addEventListener("keydown", (e) => {
+    if (!gameStarted) return;
+    if (e.code === "Space" || e.code === "ArrowUp") {
+        flap();
+    }
+});
+
+window.addEventListener("touchstart", (e) => {
+    if (!gameStarted) return;
+    e.preventDefault();
+    flap();
+}, { passive: false });
+
+function flap() {
+    if (isGameOver) {
+        resetGame();
+    } else if (!isPlaying) {
+        isPlaying = true;
+        penguin.velocity = penguin.lift;
+    } else {
+        penguin.velocity = penguin.lift;
+        penguin.wingAngle = -0.85;
+    }
+}
+
+function resetGame() {
+    penguin.y = canvas.height / 2;
+    penguin.velocity = 0;
+    pipes = [];
+    score = 0;
+    frameCount = 0;
+    isGameOver = false;
+    isPlaying = false;
+    scoreText.innerHTML = "SCORE: 0";
+}
+
+function update() {
+    if (!gameStarted) return;
+
+    snowflakes.forEach(flake => {
+        flake.y += flake.speed;
+        if (flake.y > canvas.height) flake.y = 0;
+    });
+
+    if (!isPlaying && !isGameOver) {
+        idleTimer += 0.05;
+        penguin.y = (canvas.height / 2) + Math.sin(idleTimer) * 12;
+        return;
+    }
+
+    if (isGameOver) return;
+
+    penguin.velocity += penguin.gravity;
+    penguin.y += penguin.velocity;
+
+    if (penguin.wingAngle < 0) {
+        penguin.wingAngle += 0.08;
+    }
+
+    let groundHeight = 75;
+    if (penguin.y + penguin.height >= canvas.height - groundHeight) {
+        penguin.y = canvas.height - groundHeight - penguin.height;
+        triggerGameOver();
+    }
+    if (penguin.y <= 0) {
+        penguin.y = 0;
+        penguin.velocity = 0;
+    }
+
+    frameCount++;
+    if (frameCount % 90 === 0) {
+        let minH = 90;
+        let maxH = canvas.height - groundHeight - pipeGap - 90;
+        let topH = Math.floor(Math.random() * (maxH - minH + 1)) + minH;
+        
+        pipes.push({
+            x: canvas.width,
+            top: topH,
+            bottom: canvas.height - groundHeight - (topH + pipeGap),
+            passed: false
+        });
+    }
+
+    for (let i = pipes.length - 1; i >= 0; i--) {
+        pipes[i].x -= pipeSpeed;
+
+        if (!pipes[i].passed && pipes[i].x + pipeWidth < penguin.x) {
+            score++;
+            scoreText.innerHTML = "SCORE: " + score;
+            pipes[i].passed = true;
+        }
+
+        if (
+            penguin.x < pipes[i].x + pipeWidth &&
+            penguin.x + penguin.width > pipes[i].x &&
+            (penguin.y < pipes[i].top || penguin.y + penguin.height > canvas.height - groundHeight - pipes[i].bottom)
+        ) {
+            triggerGameOver();
+        }
+
+        if (pipes[i].x + pipeWidth < 0) {
+            pipes.splice(i, 1);
+        }
+    }
+}
+
+function triggerGameOver() {
+    isGameOver = true;
+    if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("flappyPenguinArcadeHighScore", highScore);
+        highScoreText.innerHTML = "BEST: " + highScore;
+    }
+    leaderboardData.push({name: username || "PLAYER", score: score});
+    leaderboardData.sort((a, b) => b.score - a.score);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    skyGrad.addColorStop(0, "#0b192c");
+    skyGrad.addColorStop(0.5, "#1e3e62");
+    skyGrad.addColorStop(1, "#020617");
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    let groundHeight = 75;
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height - groundHeight);
+    ctx.lineTo(canvas.width * 0.35, canvas.height * 0.4);
+    ctx.lineTo(canvas.width * 0.7, canvas.height - groundHeight);
+    ctx.fill();
+
+    snowflakes.forEach(flake => {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+        ctx.beginPath();
+        ctx.arc(flake.x, flake.y, flake.radius, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    pipes.forEach(p => {
+        let pipeGradTop = ctx.createLinearGradient(p.x, 0, p.x + pipeWidth, 0);
+        pipeGradTop.addColorStop(0, "#0284c7");
+        pipeGradTop.addColorStop(0.5, "#38bdf8");
+        pipeGradTop.addColorStop(1, "#0284c7");
+        ctx.fillStyle = pipeGradTop;
+        ctx.fillRect(p.x, 0, pipeWidth, p.top);
+        
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.fillRect(p.x + 8, 0, 8, p.top);
+
+        ctx.fillStyle = "#e0f2fe";
+        ctx.fillRect(p.x - 6, p.top - 14, pipeWidth + 12, 14);
+
+        let pipeGradBot = ctx.createLinearGradient(p.x, 0, p.x + pipeWidth, 0);
+        pipeGradBot.addColorStop(0, "#0284c7");
+        pipeGradBot.addColorStop(0.5, "#38bdf8");
+        pipeGradBot.addColorStop(1, "#0284c7");
+        ctx.fillStyle = pipeGradBot;
+        ctx.fillRect(p.x, canvas.height - groundHeight - p.bottom, pipeWidth, p.bottom);
+
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.fillRect(p.x + 8, canvas.height - groundHeight - p.bottom, 8, p.bottom);
+
+        ctx.fillStyle = "#e0f2fe";
+        ctx.fillRect(p.x - 6, canvas.height - groundHeight - p.bottom, pipeWidth + 12, 14);
+    });
+
+    let groundGrad = ctx.createLinearGradient(0, canvas.height - groundHeight, 0, canvas.height);
+    groundGrad.addColorStop(0, "#38bdf8");
+    groundGrad.addColorStop(1, "#0f172a");
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+    
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, canvas.height - groundHeight, canvas.width, 10);
+
+    let px = penguin.x;
+    let py = penguin.y;
+
+    ctx.fillStyle = "#f97316";
+    ctx.fillRect(px + 10, py + 56, 11, 6);
+    ctx.fillRect(px + 31, py + 56, 11, 6);
+
+    ctx.save();
+    ctx.translate(px + 4, py + 32);
+    ctx.rotate(penguin.wingAngle);
+    ctx.fillStyle = "#0f172a";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 7, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(px + 48, py + 32);
+    ctx.rotate(-penguin.wingAngle);
+    ctx.fillStyle = "#0f172a";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 7, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = "#0f172a";
+    ctx.beginPath();
+    ctx.ellipse(px + 26, py + 32, 21, 27, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#f8fafc";
+    ctx.beginPath();
+    ctx.ellipse(px + 26, py + 34, 15, 19, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.arc(px + 19, py + 20, 5, 0, Math.PI * 2);
+    ctx.arc(px + 32, py + 20, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(px + 17, py + 18, 1.5, 0, Math.PI * 2);
+    ctx.arc(px + 30, py + 18, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#f97316";
+    ctx.beginPath();
+    ctx.moveTo(px + 22, py + 24);
+    ctx.lineTo(px + 30, py + 24);
+    ctx.lineTo(px + 26, py + 31);
+    ctx.fill();
+
+    ctx.fillStyle = "#0284c7";
+    ctx.beginPath();
+    ctx.arc(px + 26, py + 12, 13, Math.PI, 0, false);
+    ctx.fill();
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(px + 15, py + 10, 22, 4);
+
+    // --- BAŞLANGIÇ EKRANI (FLAPPY PENGUIN BAŞLIĞI) ---
+    if (!isPlaying && !isGameOver) {
+        ctx.fillStyle = "rgba(11, 25, 44, 0.45)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Flappy Penguin Başlığı (Sticker Tarzı Gölge Efektli)
+        ctx.textAlign = "center";
+        ctx.font = "bold 44px 'Impact', 'Arial Black', sans-serif";
+        
+        // Başlık gölgesi
+        ctx.fillStyle = "#0284c7";
+        ctx.fillText("FLAPPY PENGUIN", canvas.width / 2 + 3, canvas.height / 2 - 117);
+        
+        // Ana başlık yazısı
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText("FLAPPY PENGUIN", canvas.width / 2, canvas.height / 2 - 120);
+
+        // Tap to Start alt yazısı
+        ctx.font = "bold 22px 'Impact', 'Arial Black', sans-serif";
+        ctx.fillStyle = "#38bdf8";
+        ctx.fillText("TAP TO START", canvas.width / 2, canvas.height / 2 - 60);
+        ctx.textAlign = "left";
+    }
+
+    // --- GAME OVER & LEADERBOARD EKRANI ---
+    if (isGameOver) {
+        ctx.fillStyle = "rgba(5, 10, 25, 0.92)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        let boxW = Math.min(340, canvas.width - 40);
+        let boxH = 380;
+        let boxX = (canvas.width - boxW) / 2;
+        let boxY = (canvas.height - boxH) / 2;
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxW, boxH, 20);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 32px 'Impact', 'Arial Black', sans-serif";
+        ctx.textAlign = "center";
+        ctx.shadowColor = "#0284c7";
+        ctx.shadowBlur = 12;
+        ctx.fillText("GAME OVER", canvas.width / 2, boxY + 45);
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "18px 'Impact', 'Arial Black', sans-serif";
+        ctx.fillText(`SCORE: ${score}`, canvas.width / 2, boxY + 75);
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 16px 'Impact', 'Arial Black', sans-serif";
+        ctx.fillText("🏆 LEADERBOARD 🏆", canvas.width / 2, boxY + 110);
+
+        ctx.font = "16px 'Impact', 'Arial Black', sans-serif";
+        let startY = boxY + 140;
+        let topList = leaderboardData.slice(0, 4);
+        topList.forEach((item, index) => {
+            ctx.fillStyle = index === 0 ? "#fbbf24" : "#ffffff";
+            ctx.textAlign = "left";
+            ctx.fillText(`${index + 1}. ${item.name}`, boxX + 30, startY + (index * 26));
+            ctx.textAlign = "right";
+            ctx.fillText(`${item.score}`, boxX + boxW - 30, startY + (index * 26));
+        });
+
+        ctx.fillStyle = "#0284c7";
+        ctx.beginPath();
+        ctx.roundRect(boxX + 25, boxY + 300, boxW - 50, 48, 24);
+        ctx.fill();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 18px 'Impact', 'Arial Black', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("TAP TO RESTART", canvas.width / 2, boxY + 331);
+        ctx.textAlign = "left";
+    }
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
